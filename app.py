@@ -312,40 +312,82 @@ elif page == "Regression":
 elif page == "Classification":
     st.title("🔮 Classification: Predict High Scorer")
     try:
+        from sklearn.ensemble import GradientBoostingClassifier
+        from sklearn.tree import DecisionTreeClassifier
+        from sklearn.neighbors import KNeighborsClassifier
+
         if "total_runs" in df.columns:
             df["highscorer"] = (df["total_runs"] >= 3000).astype(int)
             features = ["total_balls_faced", "total_wickets_taken", "total_matches_played"]
             features = [col for col in features if col in df.columns]
             if all(col in df.columns for col in features):
+
+                # Select classifier
+                clf_name = st.selectbox(
+                    "Choose Classification Algorithm",
+                    ("Random Forest", "Decision Tree", "KNN", "Gradient Boosting"),
+                    index=0
+                )
+                if clf_name == "Random Forest":
+                    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+                elif clf_name == "Decision Tree":
+                    clf = DecisionTreeClassifier(random_state=42)
+                elif clf_name == "KNN":
+                    clf = KNeighborsClassifier(n_neighbors=5)
+                elif clf_name == "Gradient Boosting":
+                    clf = GradientBoostingClassifier(n_estimators=100, random_state=42)
+
+                # Fit model
                 X = df[features].dropna()
                 y = df.loc[X.index, "highscorer"]
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                clf = RandomForestClassifier(n_estimators=100, random_state=42)
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_test)
                 acc = accuracy_score(y_test, y_pred)
                 st.markdown(f"""
                 <div style="background:#1A1A2E;padding:0.7rem 1.2rem;border-radius:11px;width:fit-content;margin-bottom:0.5rem;color:#08F7FE;">
-                <b>Accuracy:</b> {acc:.2%}
+                <b>Accuracy ({clf_name}):</b> {acc:.2%}
                 </div>
                 """, unsafe_allow_html=True)
+
+                # Confusion Matrix
                 cm = confusion_matrix(y_test, y_pred)
                 fig, ax = plt.subplots()
                 sns.heatmap(cm, annot=True, fmt="d", cmap="coolwarm", ax=ax)
                 ax.set_title("Confusion Matrix", fontsize=13, color="#08F7FE")
                 st.pyplot(fig)
-                importances = pd.Series(clf.feature_importances_, index=features)
-                fig, ax = plt.subplots()
-                importances.sort_values().plot.barh(color="#F2C12E", ax=ax)
-                ax.set_title("Feature Importances", fontsize=12, color="#08F7FE")
-                st.pyplot(fig)
-                st.text(classification_report(y_test, y_pred))
+
+                # Feature Importance (only for tree-based)
+                if clf_name in ["Random Forest", "Decision Tree", "Gradient Boosting"]:
+                    importances = pd.Series(clf.feature_importances_, index=features)
+                    fig, ax = plt.subplots()
+                    importances.sort_values().plot.barh(color="#F2C12E", ax=ax)
+                    ax.set_title("Feature Importances", fontsize=12, color="#08F7FE")
+                    st.pyplot(fig)
+
+                # Classification report as a table
+                report_dict = classification_report(y_test, y_pred, output_dict=True)
+                report_df = pd.DataFrame(report_dict).transpose()
+                st.markdown("**Classification Report**")
+                st.dataframe(report_df.style.background_gradient(cmap="YlGnBu"), use_container_width=True)
+
+                # Show the top predicted high scorers
+                st.markdown("**Sample: Players in Test Set and Their True/Predicted Labels**")
+                display = X_test.copy()
+                display["Actual"] = y_test.values
+                display["Predicted"] = y_pred
+                display_players = df.loc[X_test.index, "player_name"]
+                if display_players is not None:
+                    display["player_name"] = display_players.values
+                    st.dataframe(display[["player_name"] + features + ["Actual", "Predicted"]].head(10), use_container_width=True)
+
             else:
                 st.warning("Required columns for classification not found.")
         else:
             st.warning("total_runs column not found for classification.")
     except Exception as e:
         st.error(f"Classification error: {e}")
+
 
 elif page == "Association Rules":
     st.title("🧩 Association Rules Mining")
