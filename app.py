@@ -277,7 +277,7 @@ elif page == "Clustering & Segmentation":
 elif page == "Regression":
     st.title("📈 Regression: Predict Runs")
     try:
-        from sklearn.linear_model import Ridge, Lasso
+        from sklearn.linear_model import Ridge, Lasso, LinearRegression
         from sklearn.tree import DecisionTreeRegressor
         from sklearn.ensemble import RandomForestRegressor
 
@@ -360,6 +360,30 @@ elif page == "Regression":
             st.markdown("**Sample Predictions**")
             st.dataframe(sample[["Player", "Actual Runs", "Predicted Runs", "Error"]].head(10))
 
+            # --- REGRESSION MODEL COMPARISON TABLE ---
+            if st.checkbox("Compare All Regression Models"):
+                regressors = {
+                    "Linear Regression": LinearRegression(),
+                    "Ridge Regression": Ridge(alpha=1.0),
+                    "Lasso Regression": Lasso(alpha=0.1),
+                    "Decision Tree": DecisionTreeRegressor(random_state=42),
+                    "Random Forest": RandomForestRegressor(n_estimators=100, random_state=42)
+                }
+                reg_results = []
+                for name, reg_m in regressors.items():
+                    reg_m.fit(X_train, y_train)
+                    y_pred_all = reg_m.predict(X_test)
+                    r2_all = r2_score(y_test, y_pred_all)
+                    rmse_all = np.sqrt(mean_squared_error(y_test, y_pred_all))
+                    reg_results.append({
+                        "Model": name,
+                        "R2 Score": round(r2_all, 4),
+                        "RMSE": round(rmse_all, 2)
+                    })
+                reg_comp_df = pd.DataFrame(reg_results)
+                st.markdown("### Model Comparison Table (Regression)")
+                st.dataframe(reg_comp_df)
+
         else:
             st.warning("Required columns for regression not found.")
     except Exception as e:
@@ -368,10 +392,10 @@ elif page == "Regression":
 elif page == "Classification":
     st.title("🔮 Classification: Predict High Scorer")
     try:
-        from sklearn.ensemble import GradientBoostingClassifier
+        from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
         from sklearn.tree import DecisionTreeClassifier
         from sklearn.neighbors import KNeighborsClassifier
-        from sklearn.metrics import roc_curve, auc
+        from sklearn.metrics import roc_curve, auc, accuracy_score, classification_report, confusion_matrix, f1_score, roc_auc_score
 
         if "total_runs" in df.columns:
             df["highscorer"] = (df["total_runs"] >= 3000).astype(int)
@@ -379,7 +403,12 @@ elif page == "Classification":
             features = [col for col in features if col in df.columns]
             if all(col in df.columns for col in features):
 
-                # Select classifier
+                # Prepare data
+                X = df[features].dropna()
+                y = df.loc[X.index, "highscorer"]
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+                # Model selector
                 clf_name = st.selectbox(
                     "Choose Classification Algorithm",
                     ("Random Forest", "Decision Tree", "KNN", "Gradient Boosting"),
@@ -394,10 +423,7 @@ elif page == "Classification":
                 elif clf_name == "Gradient Boosting":
                     clf = GradientBoostingClassifier(n_estimators=100, random_state=42)
 
-                # Fit model
-                X = df[features].dropna()
-                y = df.loc[X.index, "highscorer"]
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+                # Fit & predict
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_test)
                 acc = accuracy_score(y_test, y_pred)
@@ -414,7 +440,7 @@ elif page == "Classification":
                 ax.set_title("Confusion Matrix", fontsize=13, color="#08F7FE")
                 st.pyplot(fig)
 
-                # Feature Importance (tree-based models only)
+                # Feature Importance (tree-based)
                 if clf_name in ["Random Forest", "Decision Tree", "Gradient Boosting"]:
                     importances = pd.Series(clf.feature_importances_, index=features)
                     fig, ax = plt.subplots()
@@ -422,7 +448,7 @@ elif page == "Classification":
                     ax.set_title("Feature Importances", fontsize=12, color="#08F7FE")
                     st.pyplot(fig)
 
-                # Classification report as a color table
+                # Classification report as table
                 report_dict = classification_report(y_test, y_pred, output_dict=True)
                 report_df = pd.DataFrame(report_dict).transpose()
                 st.markdown("**Classification Report**")
@@ -459,12 +485,47 @@ elif page == "Classification":
                     display["player_name"] = display_players.values
                     st.dataframe(display[["player_name"] + features + ["Actual", "Predicted"]].head(10), use_container_width=True)
 
+                # --- CLASSIFICATION MODEL COMPARISON TABLE ---
+                if st.checkbox("Compare All Classification Algorithms"):
+                    models = {
+                        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
+                        "Decision Tree": DecisionTreeClassifier(random_state=42),
+                        "KNN": KNeighborsClassifier(n_neighbors=5),
+                        "Gradient Boosting": GradientBoostingClassifier(n_estimators=100, random_state=42)
+                    }
+                    results = []
+                    for name, model in models.items():
+                        model.fit(X_train, y_train)
+                        y_pred_all = model.predict(X_test)
+                        if hasattr(model, "predict_proba"):
+                            y_score_all = model.predict_proba(X_test)[:, 1]
+                        elif hasattr(model, "decision_function"):
+                            y_score_all = model.decision_function(X_test)
+                        else:
+                            y_score_all = y_pred_all
+                        acc_all = accuracy_score(y_test, y_pred_all)
+                        f1_all = f1_score(y_test, y_pred_all)
+                        try:
+                            auc_all = roc_auc_score(y_test, y_score_all)
+                        except:
+                            auc_all = "-"
+                        results.append({
+                            "Model": name,
+                            "Accuracy": round(acc_all, 4),
+                            "F1 Score": round(f1_all, 4),
+                            "AUC": round(auc_all, 4) if auc_all != "-" else "-"
+                        })
+                    comp_df = pd.DataFrame(results)
+                    st.markdown("### Model Comparison Table (Classification)")
+                    st.dataframe(comp_df)
+
             else:
                 st.warning("Required columns for classification not found.")
         else:
             st.warning("total_runs column not found for classification.")
     except Exception as e:
         st.error(f"Classification error: {e}")
+
 
 
 elif page == "Association Rules":
