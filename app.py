@@ -315,6 +315,7 @@ elif page == "Classification":
         from sklearn.ensemble import GradientBoostingClassifier
         from sklearn.tree import DecisionTreeClassifier
         from sklearn.neighbors import KNeighborsClassifier
+        from sklearn.metrics import roc_curve, auc
 
         if "total_runs" in df.columns:
             df["highscorer"] = (df["total_runs"] >= 3000).astype(int)
@@ -357,7 +358,7 @@ elif page == "Classification":
                 ax.set_title("Confusion Matrix", fontsize=13, color="#08F7FE")
                 st.pyplot(fig)
 
-                # Feature Importance (only for tree-based)
+                # Feature Importance (tree-based models only)
                 if clf_name in ["Random Forest", "Decision Tree", "Gradient Boosting"]:
                     importances = pd.Series(clf.feature_importances_, index=features)
                     fig, ax = plt.subplots()
@@ -365,13 +366,34 @@ elif page == "Classification":
                     ax.set_title("Feature Importances", fontsize=12, color="#08F7FE")
                     st.pyplot(fig)
 
-                # Classification report as a table
+                # Classification report as a color table
                 report_dict = classification_report(y_test, y_pred, output_dict=True)
                 report_df = pd.DataFrame(report_dict).transpose()
                 st.markdown("**Classification Report**")
                 st.dataframe(report_df.style.background_gradient(cmap="YlGnBu"), use_container_width=True)
 
-                # Show the top predicted high scorers
+                # ROC Curve
+                st.subheader("ROC Curve")
+                if hasattr(clf, "predict_proba"):
+                    y_score = clf.predict_proba(X_test)[:, 1]
+                elif hasattr(clf, "decision_function"):
+                    y_score = clf.decision_function(X_test)
+                else:
+                    y_score = y_pred  # fallback
+                fpr, tpr, _ = roc_curve(y_test, y_score)
+                roc_auc = auc(fpr, tpr)
+                fig, ax = plt.subplots()
+                ax.plot(fpr, tpr, color='#08F7FE', lw=2, label='ROC curve (AUC = %0.2f)' % roc_auc)
+                ax.plot([0, 1], [0, 1], color='grey', lw=1, linestyle='--')
+                ax.set_xlim([0.0, 1.0])
+                ax.set_ylim([0.0, 1.05])
+                ax.set_xlabel('False Positive Rate')
+                ax.set_ylabel('True Positive Rate')
+                ax.set_title('Receiver Operating Characteristic (ROC)', color="#08F7FE")
+                ax.legend(loc="lower right")
+                st.pyplot(fig)
+
+                # Show the top predicted high scorers (player names, true/pred label)
                 st.markdown("**Sample: Players in Test Set and Their True/Predicted Labels**")
                 display = X_test.copy()
                 display["Actual"] = y_test.values
