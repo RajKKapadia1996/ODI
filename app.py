@@ -277,6 +277,10 @@ elif page == "Clustering & Segmentation":
 elif page == "Regression":
     st.title("📈 Regression: Predict Runs")
     try:
+        from sklearn.linear_model import Ridge, Lasso
+        from sklearn.tree import DecisionTreeRegressor
+        from sklearn.ensemble import RandomForestRegressor
+
         features = ["total_balls_faced", "total_wickets_taken", "total_matches_played"]
         features = [col for col in features if col in df.columns]
         target = "total_runs"
@@ -285,14 +289,37 @@ elif page == "Regression":
             X = data[features]
             y = data[target]
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-            reg = LinearRegression()
+
+            # Model selector
+            regressor_name = st.selectbox(
+                "Choose Regression Algorithm",
+                ("Linear Regression", "Ridge Regression", "Lasso Regression", "Decision Tree", "Random Forest"),
+                index=0
+            )
+
+            if regressor_name == "Linear Regression":
+                reg = LinearRegression()
+            elif regressor_name == "Ridge Regression":
+                reg = Ridge(alpha=1.0)
+            elif regressor_name == "Lasso Regression":
+                reg = Lasso(alpha=0.1)
+            elif regressor_name == "Decision Tree":
+                reg = DecisionTreeRegressor(random_state=42)
+            elif regressor_name == "Random Forest":
+                reg = RandomForestRegressor(n_estimators=100, random_state=42)
+
             reg.fit(X_train, y_train)
             y_pred = reg.predict(X_test)
+            r2 = r2_score(y_test, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
             st.markdown(f"""
                 <div style="background:#1A1A2E;padding:0.7rem 1.2rem;border-radius:11px;width:fit-content;margin-bottom:0.5rem;color:#08F7FE;">
-                <b>R2 Score:</b> {r2_score(y_test, y_pred):.3f} &nbsp; | &nbsp; <b>RMSE:</b> {np.sqrt(mean_squared_error(y_test, y_pred)):.2f}
+                <b>R2 Score:</b> {r2:.3f} &nbsp; | &nbsp; <b>RMSE:</b> {rmse:.2f}
                 </div>
                 """, unsafe_allow_html=True)
+
+            # Actual vs. Predicted Plot
             fig, ax = plt.subplots(figsize=(7,5))
             sns.scatterplot(x=y_test, y=y_pred, color="#08F7FE", s=80, ax=ax)
             ax.set_xlabel("Actual Runs")
@@ -300,10 +327,39 @@ elif page == "Regression":
             ax.set_title("Actual vs. Predicted Runs", fontsize=14, color="#08F7FE")
             ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'w--', lw=2)
             st.pyplot(fig)
+
+            # Residuals Plot
             fig, ax = plt.subplots(figsize=(6,3))
             sns.histplot(y_test - y_pred, bins=30, color="#F2C12E", kde=True, ax=ax)
             ax.set_title("Residuals (Actual - Predicted)", fontsize=13, color="#08F7FE")
             st.pyplot(fig)
+
+            # Coefficients for linear/ridge/lasso
+            if regressor_name in ["Linear Regression", "Ridge Regression", "Lasso Regression"]:
+                coefs = pd.DataFrame({
+                    "Feature": features,
+                    "Coefficient": reg.coef_
+                })
+                coefs["Impact"] = coefs["Coefficient"].apply(lambda x: "⬆️" if x > 0 else "⬇️" if x < 0 else "-")
+                st.markdown("**Regression Coefficients (Impact on Predicted Runs)**")
+                st.dataframe(coefs)
+            # Feature importances for tree-based models
+            elif regressor_name in ["Decision Tree", "Random Forest"]:
+                importances = pd.Series(reg.feature_importances_, index=features)
+                fig, ax = plt.subplots()
+                importances.sort_values().plot.barh(color="#F2C12E", ax=ax)
+                ax.set_title("Feature Importances", fontsize=12, color="#08F7FE")
+                st.pyplot(fig)
+
+            # Show sample predictions
+            sample = X_test.copy()
+            sample["Actual Runs"] = y_test.values
+            sample["Predicted Runs"] = y_pred
+            sample["Player"] = df.loc[X_test.index, "player_name"].values
+            sample["Error"] = sample["Actual Runs"] - sample["Predicted Runs"]
+            st.markdown("**Sample Predictions**")
+            st.dataframe(sample[["Player", "Actual Runs", "Predicted Runs", "Error"]].head(10))
+
         else:
             st.warning("Required columns for regression not found.")
     except Exception as e:
